@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Budget Marie & Matthieu</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+</head>
+<body class="bg-gradient-to-br from-purple-50 to-pink-100 min-h-screen p-6">
+    <div class="max-w-7xl mx-auto">
+        <h1 class="text-4xl font-bold text-gray-800 mb-2 text-center">💑 Budget de Marie & Matthieu</h1>
+        <p class="text-gray-600 text-center mb-8">Analyse de nos dépenses et revenus mensuels</p>
+
+        <!-- Vue d'ensemble -->
+        <div id="overview" class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6"></div>
+
+        <!-- Boutons Export/Import -->
+        <div class="flex justify-end gap-3 mb-6">
+            <button onclick="exportData()" class="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
+                📥 Exporter
+            </button>
+            <label class="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition cursor-pointer">
+                📤 Importer
+                <input type="file" accept=".json" onchange="importData(event)" class="hidden">
+            </label>
+        </div>
+
+        <!-- Onglets -->
+        <div class="bg-white rounded-lg shadow-lg mb-6">
+            <div class="flex border-b">
+                <button onclick="switchTab('expenses')" id="tab-expenses" class="flex-1 py-4 px-6 font-semibold text-purple-600 border-b-2 border-purple-600">Dépenses</button>
+                <button onclick="switchTab('incomes')" id="tab-incomes" class="flex-1 py-4 px-6 font-semibold text-gray-500 hover:text-gray-700">Revenus</button>
+                <button onclick="switchTab('analysis')" id="tab-analysis" class="flex-1 py-4 px-6 font-semibold text-gray-500 hover:text-gray-700">Analyse</button>
+            </div>
+
+            <div class="p-6">
+                <!-- Onglet Dépenses -->
+                <div id="content-expenses">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4">Ajouter une dépense</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-6 gap-3 mb-6">
+                        <input type="text" id="expense-name" placeholder="Nom" class="border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500">
+                        <input type="number" id="expense-amount" placeholder="Montant (€)" step="0.01" class="border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500">
+                        <div class="relative">
+                            <select id="expense-category" class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white">
+                                <option value="">Catégorie</option>
+                            </select>
+                        </div>
+                        <select id="expense-account" class="border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white">
+                            <option value="">Compte</option>
+                            <option value="Matthieu">Matthieu</option>
+                            <option value="Marie">Marie</option>
+                            <option value="Commun">Commun</option>
+                        </select>
+                        <select id="expense-beneficiary" class="border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white">
+                            <option value="">Pour qui</option>
+                            <option value="Matthieu">Matthieu</option>
+                            <option value="Marie">Marie</option>
+                            <option value="Les deux">Les deux</option>
+                        </select>
+                        <button onclick="addExpense()" class="bg-purple-600 text-white rounded-lg px-6 py-2 hover:bg-purple-700 transition">➕ Ajouter</button>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+        <select id="filter-category" onchange="updateExpenseFilters()" class="border rounded-lg px-3 py-2">
+            <option value="">Toutes les catégories</option>
+        </select>
+
+        <select id="filter-account" onchange="updateExpenseFilters()" class="border rounded-lg px-3 py-2">
+            <option value="">Tous les comptes</option>
+            <option value="Matthieu">Matthieu</option>
+            <option value="Marie">Marie</option>
+            <option value="Commun">Commun</option>
+        </select>
+
+        <select id="filter-beneficiary" onchange="updateExpenseFilters()" class="border rounded-lg px-3 py-2">
+            <option value="">Tous les bénéficiaires</option>
+            <option value="Matthieu">Matthieu</option>
+            <option value="Marie">Marie</option>
+            <option value="Les deux">Les deux</option>
+        </select>
+
+        <button onclick="resetExpenseFilters()"
+            class="bg-gray-200 hover:bg-gray-300 rounded-lg px-4 py-2">
+            Réinitialiser
+        </button>
+    </div>
+                    <div id="expenses-list" class="space-y-2"></div>
+                </div>
+
+                <!-- Onglet Revenus -->
+                <div id="content-incomes" class="hidden">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4">Ajouter un revenu</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6">
+                        <input type="text" id="income-name" placeholder="Source de revenu" class="border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500">
+                        <input type="number" id="income-amount" placeholder="Montant (€)" step="0.01" class="border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500">
+                        <select id="income-person" class="border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500">
+                            <option value="Matthieu">Matthieu</option>
+                            <option value="Marie">Marie</option>
+                            <option value="Commun">Commun</option>
+                        </select>
+                        <button onclick="addIncome()" class="bg-purple-600 text-white rounded-lg px-6 py-2 hover:bg-purple-700 transition">➕ Ajouter</button>
+                    </div>
+                    <div id="incomes-list" class="space-y-2"></div>
+                </div>
+
+                <!-- Onglet Analyse -->
+                <div id="content-analysis" class="hidden">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                        <div>
+                            <h2 class="text-xl font-semibold text-gray-800 mb-4">Répartition par catégorie</h2>
+                            <canvas id="categoryChart"></canvas>
+                        </div>
+                        <div>
+                            <h2 class="text-xl font-semibold text-gray-800 mb-4">Solde par compte</h2>
+                            <canvas id="balanceChart"></canvas>
+                        </div>
+                    </div>
+                    <div id="account-cards" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let expenses = [];
+        let incomes = [];
+        let categories = ['Alimentation', 'Logement', 'Transport', 'Loisirs', 'Santé', 'Finance', 'Téléphonie Internet', 'Investissement', 'Autres'];
+        let categoryChart = null;
+        let balanceChart = null;
+        let expenseFilters = {
+    category: '',
+    account: '',
+    beneficiary: ''
+};
+
+        const colors = {
+            'Alimentation': '#FF6B6B',
+            'Logement': '#4ECDC4',
+            'Transport': '#45B7D1',
+            'Loisirs': '#FFA07A',
+            'Santé': '#98D8C8',
+            'Finance': '#F7DC6F',
+            'Téléphonie Internet': '#BB8FCE',
+            'Investissement': '#34D399',
+            'Autres': '#95A5A6'
+        };
+
+        function getColorForCategory(category) {
+            if (colors[category]) return colors[category];
+            let hash = 0;
+            for (let i = 0; i < category.length; i++) {
+                hash = category.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            const hue = hash % 360;
+            return `hsl(${hue}, 65%, 60%)`;
+        }
+
+        function loadData() {
+            const savedExpenses = localStorage.getItem('budgetExpenses');
+            const savedIncomes = localStorage.getItem('budgetIncomes');
+            const savedCategories = localStorage.getItem('budgetCategories');
+            if (savedExpenses) expenses = JSON.parse(savedExpenses);
+            if (savedIncomes) incomes = JSON.parse(savedIncomes);
+            if (savedCategories) categories = JSON.parse(savedCategories);
+            updateCategorySelect();
+            render();
+        }
+
+        function saveData() {
+            localStorage.setItem('budgetExpenses', JSON.stringify(expenses));
+            localStorage.setItem('budgetIncomes', JSON.stringify(incomes));
+            localStorage.setItem('budgetCategories', JSON.stringify(categories));
+        }
+
+        function updateCategorySelect() {
+    const select = document.getElementById('expense-category');
+    select.innerHTML = '<option value="">Catégorie</option>';
+    categories.forEach(cat => {
+        const option = document.createElement('option');
+        option.value = cat;
+        option.textContent = cat;
+        select.appendChild(option);
+    });
+
+    const filterCategory = document.getElementById('filter-category');
+    if (filterCategory) {
+        filterCategory.innerHTML = '<option value="">Toutes les catégories</option>';
+        categories.forEach(cat => {
+            const option = document.createElement('option');
+            option.value = cat;
+            option.textContent = cat;
+            filterCategory.appendChild(option);
+        });
+    }
+}
+function updateExpenseFilters() {
+    expenseFilters.category = document.getElementById('filter-category').value;
+    expenseFilters.account = document.getElementById('filter-account').value;
+    expenseFilters.beneficiary = document.getElementById('filter-beneficiary').value;
+    render();
+}
+
+function resetExpenseFilters() {
+    expenseFilters = { category: '', account: '', beneficiary: '' };
+    document.getElementById('filter-category').value = '';
+    document.getElementById('filter-account').value = '';
+    document.getElementById('filter-beneficiary').value = '';
+    render();
+}
+
+        function addExpense() {
+            const name = document.getElementById('expense-name').value;
+            const amount = parseFloat(document.getElementById('expense-amount').value);
+            const category = document.getElementById('expense-category').value;
+            const account = document.getElementById('expense-account').value;
+            const beneficiary = document.getElementById('expense-beneficiary').value;
+
+            if (name && amount > 0 && category && account && beneficiary) {
+                expenses.push({
+                    id: Date.now(),
+                    name,
+                    amount,
+                    category,
+                    account,
+                    beneficiary
+                });
+                document.getElementById('expense-name').value = '';
+                document.getElementById('expense-amount').value = '';
+                document.getElementById('expense-category').value = '';
+                document.getElementById('expense-account').value = '';
+                document.getElementById('expense-beneficiary').value = '';
+                saveData();
+                render();
+            }
+        }
+
+        function deleteExpense(id) {
+            expenses = expenses.filter(e => e.id !== id);
+            saveData();
+            render();
+        }
+
+        function addIncome() {
+            const name = document.getElementById('income-name').value;
+            const amount = parseFloat(document.getElementById('income-amount').value);
+            const person = document.getElementById('income-person').value;
+
+            if (name && amount > 0) {
+                incomes.push({
+                    id: Date.now(),
+                    name,
+                    amount,
+                    person
+                });
+                document.getElementById('income-name').value = '';
+                document.getElementById('income-amount').value = '';
+                saveData();
+                render();
+            }
+        }
+
+        function deleteIncome(id) {
+            incomes = incomes.filter(i => i.id !== id);
+            saveData();
+            render();
+        }
+
+        function getAccountStats() {
+            const stats = {
+                Matthieu: { income: 0, expenses: 0, investments: 0, sharedExpensesPaid: 0, individualExpensesFromCommon: 0 },
+                Marie: { income: 0, expenses: 0, investments: 0, sharedExpensesPaid: 0, individualExpensesFromCommon: 0 },
+                Commun: { income: 0, expenses: 0, investments: 0, sharedExpensesPaid: 0, individualExpensesFromCommon: 0 }
+            };
+
+            incomes.forEach(inc => {
+                stats[inc.person].income += inc.amount;
+            });
+
+            expenses.forEach(exp => {
+                if (exp.category === 'Investissement') {
+                    stats[exp.account].investments += exp.amount;
+                } else {
+                    stats[exp.account].expenses += exp.amount;
+                }
+
+                if (exp.account !== 'Commun' && exp.beneficiary === 'Les deux' && exp.category !== 'Investissement') {
+                    stats[exp.account].sharedExpensesPaid += exp.amount;
+                }
+
+                if (exp.account === 'Commun' && exp.beneficiary !== 'Les deux' && exp.category !== 'Investissement') {
+                    stats[exp.beneficiary].individualExpensesFromCommon += exp.amount;
+                }
+            });
+
+            return stats;
+        }
+
+        function render() {
+            const accountStats = getAccountStats();
+            
+            const totalIncomes = incomes.reduce((sum, inc) => sum + inc.amount, 0);
+            const totalExpenses = expenses.filter(exp => exp.category !== 'Investissement').reduce((sum, exp) => sum + exp.amount, 0);
+            const totalInvestments = expenses.filter(exp => exp.category === 'Investissement').reduce((sum, exp) => sum + exp.amount, 0);
+
+            // Vue d'ensemble
+            document.getElementById('overview').innerHTML = `
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-600 text-sm">Total Revenus</p>
+                            <p class="text-2xl font-bold text-green-600">${totalIncomes.toFixed(2)} €</p>
+                        </div>
+                        <span class="text-4xl">📈</span>
+                    </div>
+                </div>
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-600 text-sm">Total Dépenses</p>
+                            <p class="text-2xl font-bold text-red-600">${totalExpenses.toFixed(2)} €</p>
+                        </div>
+                        <span class="text-4xl">📉</span>
+                    </div>
+                </div>
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-600 text-sm">Total Investissements</p>
+                            <p class="text-2xl font-bold text-emerald-600">${totalInvestments.toFixed(2)} €</p>
+                        </div>
+                        <span class="text-4xl">💰</span>
+                    </div>
+                </div>
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-600 text-sm">Solde Total</p>
+                            <p class="text-2xl font-bold ${totalIncomes - totalExpenses - totalInvestments >= 0 ? 'text-green-600' : 'text-red-600'}">${(totalIncomes - totalExpenses - totalInvestments).toFixed(2)} €</p>
+                        </div>
+                        <span class="text-4xl">💳</span>
+                    </div>
+                </div>
+            `;
+
+            // Liste des dépenses
+            const filteredExpenses = expenses.filter(exp =>
+    (!expenseFilters.category || exp.category === expenseFilters.category) &&
+    (!expenseFilters.account || exp.account === expenseFilters.account) &&
+    (!expenseFilters.beneficiary || exp.beneficiary === expenseFilters.beneficiary)
+);
+
+document.getElementById('expenses-list').innerHTML = filteredExpenses.length > 0
+
+                ? filteredExpenses.map(exp => `
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition">
+                        <div class="flex items-center gap-3 flex-1">
+                            <div class="w-3 h-3 rounded-full" style="background-color: ${getColorForCategory(exp.category)}"></div>
+                            <span class="font-medium text-gray-700">${exp.name}</span>
+                            <span class="text-xs text-gray-500 px-2 py-1 bg-white rounded-full">${exp.category}</span>
+                            <span class="text-xs text-blue-600 px-2 py-1 bg-blue-50 rounded-full">Compte: ${exp.account}</span>
+                            <span class="text-xs text-pink-600 px-2 py-1 bg-pink-50 rounded-full">Pour: ${exp.beneficiary}</span>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <span class="text-lg font-semibold text-gray-800">${exp.amount.toFixed(2)} €</span>
+                            <button onclick="deleteExpense(${exp.id})" class="text-red-500 hover:text-red-700">🗑️</button>
+                        </div>
+                    </div>
+                `).join('')
+                : '<p class="text-gray-500 text-center py-8">Aucune dépense enregistrée</p>';
+
+            // Liste des revenus
+            document.getElementById('incomes-list').innerHTML = incomes.length > 0
+                ? incomes.map(inc => `
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition">
+                        <div class="flex items-center gap-3 flex-1">
+                            <span class="text-green-500 text-xl">📈</span>
+                            <span class="font-medium text-gray-700">${inc.name}</span>
+                            <span class="text-xs text-purple-600 px-2 py-1 bg-purple-50 rounded-full">${inc.person}</span>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <span class="text-lg font-semibold text-green-600">${inc.amount.toFixed(2)} €</span>
+                            <button onclick="deleteIncome(${inc.id})" class="text-red-500 hover:text-red-700">🗑️</button>
+                        </div>
+                    </div>
+                `).join('')
+                : '<p class="text-gray-500 text-center py-8">Aucun revenu enregistré</p>';
+
+            renderAnalysis(accountStats);
+        }
+
+        function renderAnalysis(accountStats) {
+            // Calcul des virements
+            const trueSharedExpensesFromCommon = expenses
+                .filter(exp => exp.account === 'Commun' && exp.beneficiary === 'Les deux' && exp.category !== 'Investissement')
+                .reduce((sum, exp) => sum + exp.amount, 0);
+            
+            const totalSharedExpensesPaid = accountStats.Matthieu.sharedExpensesPaid + accountStats.Marie.sharedExpensesPaid;
+            const totalToSplit = trueSharedExpensesFromCommon + totalSharedExpensesPaid;
+            const halfShare = totalToSplit / 2;
+            
+            const matthieuTransfer = Math.max(0, halfShare + accountStats.Matthieu.individualExpensesFromCommon - accountStats.Matthieu.sharedExpensesPaid);
+            const marieTransfer = Math.max(0, halfShare + accountStats.Marie.individualExpensesFromCommon - accountStats.Marie.sharedExpensesPaid);
+
+            // Graphique par catégorie
+            const categoryTotals = {};
+            categories.forEach(cat => categoryTotals[cat] = 0);
+            expenses.forEach(exp => {
+                categoryTotals[exp.category] += exp.amount;
+            });
+            const chartData = Object.entries(categoryTotals)
+                .filter(([_, value]) => value > 0);
+            const totalCategories = chartData.reduce((sum, [_, value]) => sum + value, 0);
+
+
+            if (categoryChart) categoryChart.destroy();
+            const ctxCat = document.getElementById('categoryChart').getContext('2d');
+            categoryChart = new Chart(ctxCat, {
+                type: 'pie',
+                data: {
+                    labels: chartData.map(([name]) => name),
+                    datasets: [{
+                        data: chartData.map(([_, value]) => value),
+                        backgroundColor: chartData.map(([name]) => getColorForCategory(name))
+                    }]
+                },
+                options: {
+    responsive: true,
+    maintainAspectRatio: true,
+    plugins: {
+        legend: { position: 'bottom' },
+        tooltip: {
+            callbacks: {
+                label: function (context) {
+                    const value = context.raw;
+                    const percentage = ((value / totalCategories) * 100).toFixed(1);
+                    return `${context.label} : ${value.toFixed(2)} € (${percentage} %)`;
+                }
+            }
+        }
+    }
+}
+            });
+
+            // Graphique par compte
+            if (balanceChart) balanceChart.destroy();
+            const ctxBal = document.getElementById('balanceChart').getContext('2d');
+            balanceChart = new Chart(ctxBal, {
+                type: 'bar',
+                data: {
+                    labels: ['Matthieu', 'Marie', 'Commun'],
+                    datasets: [
+                        {
+                            label: 'Revenus',
+                            data: [
+                                accountStats.Matthieu.income,
+                                accountStats.Marie.income,
+                                accountStats.Commun.income + matthieuTransfer + marieTransfer
+                            ],
+                            backgroundColor: '#10b981'
+                        },
+                        {
+                            label: 'Dépenses',
+                            data: [
+                                accountStats.Matthieu.expenses,
+                                accountStats.Marie.expenses,
+                                accountStats.Commun.expenses
+                            ],
+                            backgroundColor: '#ef4444'
+                        },
+                        {
+                            label: 'Investissements',
+                            data: [
+                                accountStats.Matthieu.investments,
+                                accountStats.Marie.investments,
+                                accountStats.Commun.investments
+                            ],
+                            backgroundColor: '#34d399'
+                        },
+                        {
+                            label: 'Virement commun',
+                            data: [matthieuTransfer, marieTransfer, 0],
+                            backgroundColor: '#f59e0b'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    scales: { x: { stacked: false }, y: { stacked: false } }
+                }
+            });
+
+            // Cartes par compte
+            const people = ['Matthieu', 'Marie', 'Commun'];
+            document.getElementById('account-cards').innerHTML = people.map(person => {
+                const transfer = person === 'Matthieu' ? matthieuTransfer : person === 'Marie' ? marieTransfer : 0;
+                const finalBalance = person === 'Commun' 
+                    ? 0 
+                    : accountStats[person].income - accountStats[person].investments - accountStats[person].expenses - transfer;
+                
+                let details = '';
+                if (person !== 'Commun' && accountStats[person].sharedExpensesPaid > 0) {
+                    details += `<div class="flex justify-between text-sm"><span class="text-gray-600">↳ dont dépenses communes</span><span class="font-semibold text-blue-600">${accountStats[person].sharedExpensesPaid.toFixed(2)} €</span></div>`;
+                }
+                if (person !== 'Commun' && accountStats[person].individualExpensesFromCommon > 0) {
+                    details += `<div class="flex justify-between"><span class="text-gray-600">Dépenses perso (compte commun)</span><span class="font-semibold text-purple-600">${accountStats[person].individualExpensesFromCommon.toFixed(2)} €</span></div>`;
+                }
+                if (person !== 'Commun' && transfer > 0) {
+                    details += `<div class="flex justify-between"><span class="text-gray-600">Virement → Commun</span><span class="font-semibold text-orange-600">${transfer.toFixed(2)} €</span></div>`;
+                }
+                if (person === 'Commun' && (matthieuTransfer > 0 || marieTransfer > 0)) {
+                    details += `<div class="flex justify-between"><span class="text-gray-600">Virements reçus</span><span class="font-semibold text-green-600">+${(matthieuTransfer + marieTransfer).toFixed(2)} €</span></div>`;
+                }
+
+                return `
+                    <div class="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg p-6">
+                        <h3 class="text-lg font-bold text-gray-800 mb-3">${person}</h3>
+                        <div class="space-y-2">
+                            <div class="flex justify-between"><span class="text-gray-600">Revenus</span><span class="font-semibold text-green-600">${accountStats[person].income.toFixed(2)} €</span></div>
+                            ${accountStats[person].investments > 0 ? `<div class="flex justify-between"><span class="text-gray-600">Investissements</span><span class="font-semibold text-emerald-600">${accountStats[person].investments.toFixed(2)} €</span></div>` : ''}
+                            <div class="flex justify-between"><span class="text-gray-600">Dépenses</span><span class="font-semibold text-red-600">${accountStats[person].expenses.toFixed(2)} €</span></div>
+                            ${details}
+                            <div class="border-t pt-2 flex justify-between"><span class="font-bold text-gray-700">Solde final</span><span class="font-bold text-lg ${finalBalance >= 0 ? 'text-green-600' : 'text-red-600'}">${finalBalance.toFixed(2)} €</span></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function switchTab(tab) {
+            ['expenses', 'incomes', 'analysis'].forEach(t => {
+                document.getElementById(`tab-${t}`).className = `flex-1 py-4 px-6 font-semibold ${t === tab ? 'text-purple-600 border-b-2 border-purple-600' : 'text-gray-500 hover:text-gray-700'}`;
+                document.getElementById(`content-${t}`).className = t === tab ? '' : 'hidden';
+            });
+        }
+
+        function exportData() {
+            const data = { expenses, incomes, categories };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `budget_couple_${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function importData(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const imported = JSON.parse(e.target.result);
+                        if (imported.expenses && imported.incomes) {
+                            expenses = imported.expenses;
+                            incomes = imported.incomes;
+                            if (imported.categories) categories = imported.categories;
+                            saveData();
+                            updateCategorySelect();
+                            render();
+                            alert('Données importées avec succès !');
+                        }
+                    } catch (error) {
+                        alert('Erreur lors de l\'import');
+                    }
+                };
+                reader.readAsText(file);
+            }
+            event.target.value = '';
+        }
+
+        loadData();
+    </script>
+</body>
+</html>
