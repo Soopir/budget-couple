@@ -1,0 +1,42 @@
+::-webkit-scrollbar {
+    width: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f8fafc;
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* Smooth transitions for all interactive elements */
+button, select, input {
+    transition: all 0.15s ease-in-out;
+}
+
+/* Custom focus styles for better accessibility */
+input:focus, select:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+/* Suivi progress bars */
+.progress-bar-track {
+    background: #f1f5f9;
+    border-radius: 9999px;
+    height: 6px;
+    overflow: hidden;
+}
+
+.progress-bar-fill {
+    height: 6px;
+    border-radius: 9999px;
+    transition: width 0.3s ease;
+}
