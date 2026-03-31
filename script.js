@@ -14,6 +14,37 @@ let categoryChart = null;
 let balanceChart = null;
 let histChart = null;
 let selectedHistYear = new Date().getFullYear();
+let savingsSnapshots = [];
+let savingsEvolutionChart = null;
+let selectedEpargneMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+let savingsGoal = parseFloat(localStorage.getItem('savings-goal') || 0);
+let menus = [];
+let mealPlan = [];
+
+function getMonday(date) {
+    const d = new Date(date);
+    const day = d.getDay();
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate() - day + (day === 0 ? -6 : 1));
+}
+
+function weekKey(date) {
+    const d = getMonday(date);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+let selectedMenuWeek = getMonday(new Date());
+
+const savingsTypes = ['Livret A Matthieu', 'PEA Matthieu', 'CTO Matthieu', 'Livret A Marie', 'LDD Marie', 'PEA Marie', 'Autre'];
+const savingsColors = {
+    'Livret A Matthieu': '#3b82f6',
+    'PEA Matthieu':      '#10b981',
+    'CTO Matthieu':      '#f59e0b',
+    'Livret A Marie':    '#ec4899',
+    'LDD Marie':         '#f43f5e',
+    'PEA Marie':         '#a855f7',
+    'Autre':             '#94a3b8'
+};
+let editingExpenseId = null;
 let expenseFilters = {
     category: '',
     account: '',
@@ -120,21 +151,34 @@ async function loadFromSupabase() {
     const [
         { data: supaExpenses, error: expError },
         { data: supaIncomes, error: incError },
-        { data: supaTracking, error: trackError }
+        { data: supaTracking, error: trackError },
+        { data: supaSnapshots, error: snapshotError },
+        { data: supaMenus, error: menusError },
+        { data: supaIngredients, error: ingredientsError },
+        { data: supaMealPlan, error: mealPlanError }
     ] = await Promise.all([
         supabaseClient.from('expenses').select('*'),
         supabaseClient.from('incomes').select('*'),
         supabaseClient.from('suivi').select('*'),
+        supabaseClient.from('epargne_snapshots').select('*').order('month', { ascending: true }),
+        supabaseClient.from('menus').select('*').order('name'),
+        supabaseClient.from('menu_ingredients').select('*').order('name'),
+        supabaseClient.from('meal_plan').select('*'),
     ]);
 
-    if (expError || incError || trackError) {
-        console.error('Erreur Supabase:', expError || incError || trackError);
+    if (expError || incError || trackError || snapshotError || menusError || ingredientsError || mealPlanError) {
+        console.error('Erreur Supabase:', expError || incError || trackError || snapshotError || menusError || ingredientsError || mealPlanError);
         return;
     }
 
     expenses = supaExpenses || [];
     incomes = supaIncomes || [];
     trackingEntries = supaTracking || [];
+    savingsSnapshots = supaSnapshots || [];
+    const rawMenus = supaMenus || [];
+    const rawIngredients = supaIngredients || [];
+    menus = rawMenus.map(m => ({ ...m, ingredients: rawIngredients.filter(i => i.menu_id === m.id) }));
+    mealPlan = supaMealPlan || [];
 
     updateCategorySelect();
     render();
@@ -196,26 +240,53 @@ async function addExpense() {
 
     const recurring = document.getElementById('expense-recurring').checked;
 
-    // #7 — Désactivation du bouton pendant le chargement
     setButtonLoading('btn-add-expense', true);
-    // #3 — variable data supprimée
-    const { error } = await supabaseClient
-        .from('expenses')
-        .insert([{ name, amount, category, account, beneficiary, recurring }]);
-    setButtonLoading('btn-add-expense', false);
 
-    if (error) {
-        console.error('Erreur ajout dépense:', error);
-        return;
+    let error;
+    if (editingExpenseId) {
+        ({ error } = await supabaseClient
+            .from('expenses')
+            .update({ name, amount, category, account, beneficiary, recurring })
+            .eq('id', editingExpenseId));
+    } else {
+        ({ error } = await supabaseClient
+            .from('expenses')
+            .insert([{ name, amount, category, account, beneficiary, recurring }]));
     }
 
+    setButtonLoading('btn-add-expense', false);
+    if (error) { console.error('Erreur dépense:', error); return; }
+
+    cancelEditExpense();
     await loadFromSupabase();
+}
+
+function editExpense(id) {
+    const exp = expenses.find(e => e.id === id);
+    if (!exp) return;
+    editingExpenseId = id;
+    document.getElementById('expense-name').value = exp.name;
+    document.getElementById('expense-amount').value = exp.amount;
+    document.getElementById('expense-category').value = exp.category;
+    document.getElementById('expense-account').value = exp.account;
+    document.getElementById('expense-beneficiary').value = exp.beneficiary;
+    document.getElementById('expense-recurring').checked = !!exp.recurring;
+    document.getElementById('btn-add-expense').textContent = 'Mettre à jour';
+    document.getElementById('btn-cancel-expense').classList.remove('hidden');
+    document.getElementById('expense-name').focus();
+    document.getElementById('expense-name').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function cancelEditExpense() {
+    editingExpenseId = null;
     document.getElementById('expense-name').value = '';
     document.getElementById('expense-amount').value = '';
     document.getElementById('expense-category').value = '';
     document.getElementById('expense-account').value = '';
     document.getElementById('expense-beneficiary').value = '';
     document.getElementById('expense-recurring').checked = false;
+    document.getElementById('btn-add-expense').textContent = 'Ajouter';
+    document.getElementById('btn-cancel-expense').classList.add('hidden');
 }
 
 async function deleteExpense(id) {
@@ -351,6 +422,7 @@ function render() {
                             : 'text-slate-300 border-slate-200 hover:text-blue-500 hover:border-blue-200 hover:bg-blue-50'}">
                         ↻${exp.recurring ? ' auto' : ''}
                     </button>
+                    <button onclick="editExpense('${exp.id}')" class="text-slate-300 hover:text-blue-500 transition opacity-0 group-hover:opacity-100 text-sm leading-none" title="Modifier">✎</button>
                     <button onclick="deleteExpense('${exp.id}')" class="text-slate-300 hover:text-red-500 transition opacity-0 group-hover:opacity-100 text-base leading-none">×</button>
                 </div>
             </div>
@@ -383,6 +455,12 @@ function render() {
     }
     if (!document.getElementById('content-historique').classList.contains('hidden')) {
         renderHistorique();
+    }
+    if (!document.getElementById('content-epargne').classList.contains('hidden')) {
+        renderEpargne();
+    }
+    if (!document.getElementById('content-menus').classList.contains('hidden')) {
+        renderMenusTab();
     }
     renderSuivi();
 }
@@ -805,20 +883,363 @@ function renderHistorique() {
     `;
 }
 
+// ── Épargne ──────────────────────────────────────────────────────────────────
+
+function monthKey(date) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
+function changeEpargneMonth(delta) {
+    selectedEpargneMonth = new Date(
+        selectedEpargneMonth.getFullYear(),
+        selectedEpargneMonth.getMonth() + delta,
+        1
+    );
+    renderEpargne();
+}
+
+async function saveEpargneSnapshot() {
+    const monthStr = monthKey(selectedEpargneMonth);
+    const rows = [];
+    savingsTypes.forEach(type => {
+        const input = document.getElementById(`epargne-input-${type.replace(/\s+/g, '-')}`);
+        if (!input) return;
+        const val = parseFloat(input.value);
+        if (!isNaN(val) && val >= 0) rows.push({ type, amount: val, month: monthStr });
+    });
+    if (rows.length === 0) return;
+    setButtonLoading('btn-save-epargne', true);
+    const { error } = await supabaseClient.from('epargne_snapshots')
+        .upsert(rows, { onConflict: 'type,month' });
+    setButtonLoading('btn-save-epargne', false);
+    if (error) { console.error('Erreur snapshot épargne:', error); return; }
+    await loadFromSupabase();
+}
+
+function saveSavingsGoal() {
+    const val = parseFloat(document.getElementById('savings-goal-input').value);
+    if (!val || val <= 0) return;
+    savingsGoal = val;
+    localStorage.setItem('savings-goal', val);
+    document.getElementById('savings-current-goal').textContent = `Objectif actuel : ${val.toFixed(0)} €`;
+    renderEpargne();
+}
+
+function renderEpargne() {
+    // ── Label mois ──
+    const label = selectedEpargneMonth.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    document.getElementById('epargne-month-label').textContent = label.charAt(0).toUpperCase() + label.slice(1);
+
+    const currentKey = monthKey(selectedEpargneMonth);
+    const prevMonth = new Date(selectedEpargneMonth.getFullYear(), selectedEpargneMonth.getMonth() - 1, 1);
+    const prevKey = monthKey(prevMonth);
+
+    // ── Grille d'inputs ──
+    document.getElementById('epargne-inputs').innerHTML = savingsTypes.map(type => {
+        const inputId = `epargne-input-${type.replace(/\s+/g, '-')}`;
+        const snap = savingsSnapshots.find(s => s.type === type && s.month === currentKey);
+        const prevSnap = savingsSnapshots.find(s => s.type === type && s.month === prevKey);
+        const currentVal = snap ? snap.amount : '';
+        let deltaHtml = '';
+        if (snap && prevSnap) {
+            const delta = snap.amount - prevSnap.amount;
+            const sign = delta >= 0 ? '+' : '';
+            const color = delta >= 0 ? 'text-emerald-600' : 'text-red-500';
+            deltaHtml = `<span class="text-xs font-semibold ${color}">${sign}${delta.toFixed(0)} €</span>`;
+        } else {
+            deltaHtml = `<span class="text-xs text-slate-300">—</span>`;
+        }
+        const dotColor = savingsColors[type] || '#94a3b8';
+        return `
+            <div class="grid grid-cols-[16px_1fr_180px_100px] items-center px-4 py-3 border-b border-slate-100 last:border-0 hover:bg-slate-50 transition gap-3">
+                <div class="w-2 h-2 rounded-full flex-shrink-0" style="background-color:${dotColor}"></div>
+                <span class="text-sm font-medium text-slate-800">${escapeHtml(type)}</span>
+                <input type="number" id="${inputId}" value="${currentVal}" placeholder="0" step="0.01" min="0"
+                       class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-right w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <div class="text-right">${deltaHtml}</div>
+            </div>`;
+    }).join('');
+
+    // ── Carte total / objectif ──
+    const currentSnaps = savingsSnapshots.filter(s => s.month === currentKey);
+    const monthTotal = currentSnaps.reduce((sum, s) => sum + s.amount, 0);
+    const goalEl = document.getElementById('epargne-goal');
+    if (savingsGoal > 0) {
+        const pct = Math.min((monthTotal / savingsGoal) * 100, 100);
+        const barColor = pct >= 100 ? '#10b981' : pct >= 75 ? '#3b82f6' : '#6366f1';
+        goalEl.innerHTML = `
+            <div class="bg-white rounded-xl border border-slate-200 p-5">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Total actuel</p>
+                        <p class="text-2xl font-bold text-slate-900">${monthTotal.toFixed(0)} €
+                            <span class="text-sm font-normal text-slate-400">/ ${savingsGoal.toFixed(0)} €</span>
+                        </p>
+                    </div>
+                    <p class="text-3xl font-bold" style="color:${barColor}">${pct.toFixed(0)} %</p>
+                </div>
+                <div class="progress-bar-track">
+                    <div class="progress-bar-fill" style="width:${pct}%; background-color:${barColor}"></div>
+                </div>
+                <p class="mt-2 text-xs text-slate-400 text-right">Reste : ${Math.max(0, savingsGoal - monthTotal).toFixed(0)} €</p>
+            </div>`;
+    } else {
+        goalEl.innerHTML = currentSnaps.length > 0
+            ? `<div class="bg-slate-50 rounded-lg border border-dashed border-slate-200 p-4 flex justify-between items-center">
+                <p class="text-sm text-slate-500">Total épargné ce mois : <span class="font-semibold text-slate-800">${monthTotal.toFixed(2)} €</span></p>
+                <p class="text-xs text-slate-400">${currentSnaps.length} / ${savingsTypes.length} comptes renseignés</p>
+               </div>`
+            : '';
+    }
+
+    // ── Graphique évolution ──
+    const allMonthKeys = [...new Set(savingsSnapshots.map(s => s.month))].sort();
+    if (savingsEvolutionChart) { savingsEvolutionChart.destroy(); savingsEvolutionChart = null; }
+    if (allMonthKeys.length === 0) return;
+
+    const chartLabels = allMonthKeys.map(mk => {
+        const [y, m] = mk.split('-').map(Number);
+        const lbl = new Date(y, m - 1, 1).toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' });
+        return lbl.charAt(0).toUpperCase() + lbl.slice(1);
+    });
+
+    const typeDatasets = savingsTypes.map(type => ({
+        label: type,
+        data: allMonthKeys.map(mk => {
+            const s = savingsSnapshots.find(x => x.type === type && x.month === mk);
+            return s ? s.amount : null;
+        }),
+        borderColor: savingsColors[type] || '#94a3b8',
+        backgroundColor: 'transparent',
+        tension: 0.3,
+        pointRadius: 3,
+        spanGaps: false,
+    }));
+
+    const totalDataset = {
+        label: 'Total',
+        data: allMonthKeys.map(mk => {
+            const snaps = savingsSnapshots.filter(x => x.month === mk);
+            return snaps.length > 0 ? snaps.reduce((s, x) => s + x.amount, 0) : null;
+        }),
+        borderColor: '#1e293b',
+        backgroundColor: 'transparent',
+        borderWidth: 2.5,
+        tension: 0.3,
+        pointRadius: 4,
+        spanGaps: false,
+    };
+
+    const ctx = document.getElementById('savingsEvolutionChart').getContext('2d');
+    savingsEvolutionChart = new Chart(ctx, {
+        type: 'line',
+        data: { labels: chartLabels, datasets: [...typeDatasets, totalDataset] },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'bottom' },
+                tooltip: { callbacks: { label: c => `${c.dataset.label} : ${c.raw !== null ? c.raw.toFixed(0) + ' €' : 'n/a'}` } }
+            },
+            scales: { y: { beginAtZero: false } }
+        }
+    });
+}
+
+// ── Menus & Courses ──────────────────────────────────────────────────────────
+
+function changeMenuWeek(delta) {
+    selectedMenuWeek = new Date(
+        selectedMenuWeek.getFullYear(),
+        selectedMenuWeek.getMonth(),
+        selectedMenuWeek.getDate() + delta * 7
+    );
+    renderMenusTab();
+}
+
+function renderShoppingList() {
+    const wk = weekKey(selectedMenuWeek);
+    const weekPlans = mealPlan.filter(p => p.week_start === wk && p.menu_id);
+    const menuIds = [...new Set(weekPlans.map(p => p.menu_id))];
+    const ingredientMap = {};
+    menuIds.forEach(id => {
+        const menu = menus.find(m => m.id === id);
+        if (!menu) return;
+        menu.ingredients.forEach(ing => {
+            if (!ingredientMap[ing.name]) ingredientMap[ing.name] = [];
+            if (!ingredientMap[ing.name].includes(menu.name))
+                ingredientMap[ing.name].push(menu.name);
+        });
+    });
+    const items = Object.entries(ingredientMap).sort(([a], [b]) => a.localeCompare(b, 'fr'));
+    const el = document.getElementById('menus-shopping-list');
+    if (items.length === 0) {
+        el.innerHTML = '<p class="text-slate-400 text-sm text-center py-6">Aucun menu planifié cette semaine</p>';
+        return;
+    }
+    el.innerHTML = `<div class="border border-slate-200 rounded-xl overflow-hidden">
+        ${items.map(([name, sources]) => `
+            <label class="flex items-center gap-3 px-4 py-3 border-b border-slate-100 last:border-0 hover:bg-slate-50 cursor-pointer transition">
+                <input type="checkbox" class="w-4 h-4 accent-blue-600 flex-shrink-0">
+                <span class="text-sm text-slate-800 flex-1">${escapeHtml(name)}</span>
+                <span class="text-xs text-slate-400">${sources.map(s => escapeHtml(s)).join(', ')}</span>
+            </label>`).join('')}
+    </div>`;
+}
+
+function renderMenusTab() {
+    const days = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+    const mon = getMonday(selectedMenuWeek);
+    const wk = weekKey(selectedMenuWeek);
+
+    // Label semaine
+    const label = mon.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+    document.getElementById('menus-week-label').textContent = `Semaine du ${label}`;
+
+    // Grille planning
+    const headerCells = days.map(d =>
+        `<th class="px-3 py-2 text-xs font-semibold text-slate-400 uppercase tracking-wider text-center">${d}</th>`
+    ).join('');
+
+    const makeRow = (mealType, label) => {
+        const cells = [0,1,2,3,4,5,6].map(day => {
+            const plan = mealPlan.find(p => p.week_start === wk && p.day_of_week === day && p.meal_type === mealType);
+            const val = plan?.menu_id || '';
+            return `<td class="px-2 py-2">
+                <select id="meal-sel-${day}-${mealType}"
+                        onchange="saveSingleMeal(${day}, '${mealType}', this.value)"
+                        class="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white">
+                    <option value="">—</option>
+                    ${menus.map(m => `<option value="${m.id}"${m.id === val ? ' selected' : ''}>${escapeHtml(m.name)}</option>`).join('')}
+                </select>
+            </td>`;
+        }).join('');
+        return `<tr>
+            <td class="px-3 py-2 text-xs font-semibold text-slate-500 whitespace-nowrap">${label}</td>
+            ${cells}
+        </tr>`;
+    };
+
+    document.getElementById('menus-planning-grid').innerHTML = `
+        <table class="w-full min-w-[820px] border border-slate-200 rounded-xl overflow-hidden text-sm">
+            <thead class="bg-slate-50 border-b border-slate-200">
+                <tr>
+                    <th class="px-3 py-2 w-16"></th>
+                    ${headerCells}
+                </tr>
+            </thead>
+            <tbody>
+                ${makeRow('midi', 'Midi')}
+                ${makeRow('soir', 'Soir')}
+            </tbody>
+        </table>`;
+
+    // Liste de courses
+    renderShoppingList();
+
+    // Catalogue des menus
+    document.getElementById('menus-list').innerHTML = menus.length === 0
+        ? '<p class="text-slate-400 text-sm text-center py-6">Aucun menu créé</p>'
+        : menus.map(menu => `
+            <div class="group border border-slate-200 rounded-xl p-4 mb-3">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-sm font-semibold text-slate-800">${escapeHtml(menu.name)}</span>
+                    <button onclick="deleteMenu('${menu.id}')"
+                            class="text-slate-300 hover:text-red-500 transition opacity-0 group-hover:opacity-100 text-base leading-none">×</button>
+                </div>
+                <div class="flex flex-wrap gap-2 mb-3">
+                    ${menu.ingredients.length === 0
+                        ? '<span class="text-xs text-slate-400">Aucun ingrédient</span>'
+                        : menu.ingredients.map(ing => `
+                            <span class="group/ing inline-flex items-center gap-1 bg-slate-100 text-slate-600 text-xs px-2 py-1 rounded-full">
+                                ${escapeHtml(ing.name)}
+                                <button onclick="deleteIngredient('${ing.id}')"
+                                        class="text-slate-300 hover:text-red-500 transition opacity-0 group-hover/ing:opacity-100 leading-none">&times;</button>
+                            </span>`).join('')}
+                </div>
+                <div class="flex gap-2">
+                    <input type="text" id="add-ing-input-${menu.id}" placeholder="Ajouter un ingrédient"
+                           class="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    <button id="btn-add-ing-${menu.id}" onclick="addIngredient('${menu.id}')"
+                            class="border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg px-3 py-1.5 text-xs font-medium transition">+</button>
+                </div>
+            </div>`).join('');
+
+    // Enter key pour chaque input ingrédient
+    menus.forEach(menu => {
+        document.getElementById(`add-ing-input-${menu.id}`)?.addEventListener('keydown', e => {
+            if (e.key === 'Enter') addIngredient(menu.id);
+        });
+    });
+}
+
+async function saveSingleMeal(day, mealType, menuId) {
+    const wk = weekKey(selectedMenuWeek);
+    const row = { week_start: wk, day_of_week: day, meal_type: mealType, menu_id: menuId || null };
+    const { error } = await supabaseClient.from('meal_plan')
+        .upsert([row], { onConflict: 'week_start,day_of_week,meal_type' });
+    if (error) { console.error('Erreur sauvegarde planning:', error); return; }
+    // Mise à jour locale sans rechargement complet
+    mealPlan = mealPlan.filter(p => !(p.week_start === wk && p.day_of_week === day && p.meal_type === mealType));
+    if (menuId) mealPlan.push(row);
+    renderShoppingList();
+}
+
+async function addMenu() {
+    const name = document.getElementById('new-menu-name').value.trim();
+    if (!name) return;
+    setButtonLoading('btn-add-menu', true);
+    const { error } = await supabaseClient.from('menus').insert([{ name }]);
+    setButtonLoading('btn-add-menu', false);
+    if (error) { console.error('Erreur ajout menu:', error); return; }
+    document.getElementById('new-menu-name').value = '';
+    await loadFromSupabase();
+}
+
+async function deleteMenu(id) {
+    if (!confirm('Supprimer ce menu et tous ses ingrédients ?')) return;
+    const { error } = await supabaseClient.from('menus').delete().eq('id', id);
+    if (error) { console.error('Erreur suppression menu:', error); return; }
+    await loadFromSupabase();
+}
+
+async function addIngredient(menuId) {
+    const input = document.getElementById(`add-ing-input-${menuId}`);
+    const name = input?.value.trim();
+    if (!name) return;
+    setButtonLoading(`btn-add-ing-${menuId}`, true);
+    const { error } = await supabaseClient.from('menu_ingredients').insert([{ menu_id: menuId, name }]);
+    setButtonLoading(`btn-add-ing-${menuId}`, false);
+    if (error) { console.error('Erreur ajout ingrédient:', error); return; }
+    if (input) input.value = '';
+    await loadFromSupabase();
+}
+
+async function deleteIngredient(id) {
+    const { error } = await supabaseClient.from('menu_ingredients').delete().eq('id', id);
+    if (error) { console.error('Erreur suppression ingrédient:', error); return; }
+    await loadFromSupabase();
+}
+
 // Tab switching — #9 : renderAnalysis/renderHistorique appelés uniquement en basculant sur leur onglet
 function switchTab(tab) {
-    ['expenses', 'incomes', 'analysis', 'suivi', 'historique'].forEach(t => {
+    ['expenses', 'incomes', 'analysis', 'suivi', 'historique', 'epargne', 'menus'].forEach(t => {
         document.getElementById(`tab-${t}`).className = `px-4 py-3 text-sm font-medium border-b-2 -mb-px transition ${t === tab ? 'text-blue-600 border-blue-600' : 'text-slate-500 hover:text-slate-700 border-transparent'}`;
         document.getElementById(`content-${t}`).className = t === tab ? '' : 'hidden';
     });
     if (tab === 'analysis') renderAnalysis(getAccountStats());
     if (tab === 'historique') renderHistorique();
+    if (tab === 'epargne') renderEpargne();
+    if (tab === 'menus') renderMenusTab();
 }
 
 // #4 — Date par défaut + #6 — Touche Entrée pour valider les formulaires
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('suivi-date').value = new Date().toISOString().split('T')[0];
     document.getElementById('hist-year-label').textContent = selectedHistYear;
+    if (savingsGoal > 0) {
+        document.getElementById('savings-goal-input').value = savingsGoal;
+        document.getElementById('savings-current-goal').textContent = `Objectif actuel : ${savingsGoal.toFixed(0)} €`;
+    }
 
     ['expense-name', 'expense-amount', 'expense-category', 'expense-account', 'expense-beneficiary'].forEach(id => {
         document.getElementById(id)?.addEventListener('keydown', e => { if (e.key === 'Enter') addExpense(); });
@@ -831,4 +1252,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ['suivi-name', 'suivi-amount', 'suivi-category', 'suivi-date'].forEach(id => {
         document.getElementById(id)?.addEventListener('keydown', e => { if (e.key === 'Enter') addTrackingEntry(); });
     });
+
+    document.getElementById('new-menu-name')?.addEventListener('keydown', e => { if (e.key === 'Enter') addMenu(); });
+
 });

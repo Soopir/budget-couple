@@ -47,6 +47,8 @@
                 <button onclick="switchTab('analysis')" id="tab-analysis" class="px-4 py-3 text-sm font-medium text-slate-500 hover:text-slate-700 border-b-2 border-transparent -mb-px">Analyse</button>
                 <button onclick="switchTab('suivi')" id="tab-suivi" class="px-4 py-3 text-sm font-medium text-slate-500 hover:text-slate-700 border-b-2 border-transparent -mb-px">Suivi</button>
                 <button onclick="switchTab('historique')" id="tab-historique" class="px-4 py-3 text-sm font-medium text-slate-500 hover:text-slate-700 border-b-2 border-transparent -mb-px">Historique</button>
+                <button onclick="switchTab('epargne')" id="tab-epargne" class="px-4 py-3 text-sm font-medium text-slate-500 hover:text-slate-700 border-b-2 border-transparent -mb-px">Épargne</button>
+                <button onclick="switchTab('menus')" id="tab-menus" class="px-4 py-3 text-sm font-medium text-slate-500 hover:text-slate-700 border-b-2 border-transparent -mb-px">Menus & Courses</button>
             </div>
 
             <div class="p-6">
@@ -75,7 +77,10 @@
                             <option value="Marie">Marie</option>
                             <option value="Les deux">Les deux</option>
                         </select>
-                        <button id="btn-add-expense" onclick="addExpense()" class="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-blue-700 transition">Ajouter</button>
+                        <div class="flex gap-2">
+                            <button id="btn-add-expense" onclick="addExpense()" class="flex-1 bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-blue-700 transition">Ajouter</button>
+                            <button id="btn-cancel-expense" onclick="cancelEditExpense()" class="hidden border border-slate-200 text-slate-500 hover:bg-slate-50 rounded-lg px-3 py-2 text-sm font-medium transition">✕</button>
+                        </div>
                     </div>
                     <div class="flex items-center gap-2 mb-5">
                         <label class="flex items-center gap-2 text-sm text-slate-500 cursor-pointer select-none">
@@ -161,6 +166,92 @@
                     </div>
                     <canvas id="histChart" class="mb-6"></canvas>
                     <div id="hist-table"></div>
+                </div>
+
+                <!-- Onglet Épargne -->
+                <div id="content-epargne" class="hidden">
+                    <!-- Navigateur mois -->
+                    <div class="flex items-center justify-between mb-5">
+                        <h2 class="text-sm font-semibold text-slate-900">Épargne</h2>
+                        <div class="flex items-center gap-2">
+                            <button onclick="changeEpargneMonth(-1)" class="border border-slate-200 hover:bg-slate-50 rounded-lg w-7 h-7 flex items-center justify-center text-slate-500 transition text-base leading-none">‹</button>
+                            <span id="epargne-month-label" class="text-sm font-medium text-slate-700 w-36 text-center"></span>
+                            <button onclick="changeEpargneMonth(1)" class="border border-slate-200 hover:bg-slate-50 rounded-lg w-7 h-7 flex items-center justify-center text-slate-500 transition text-base leading-none">›</button>
+                        </div>
+                    </div>
+
+                    <!-- Grille de saisie (rendue dynamiquement) -->
+                    <div class="rounded-xl border border-slate-200 overflow-hidden mb-5">
+                        <div class="grid grid-cols-[16px_1fr_180px_100px] items-center px-4 py-2 bg-slate-50 border-b border-slate-200 gap-3">
+                            <span></span>
+                            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Compte</span>
+                            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider text-right">Solde (€)</span>
+                            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider text-right">Évolution</span>
+                        </div>
+                        <div id="epargne-inputs"></div>
+                    </div>
+
+                    <div class="flex justify-end mb-5">
+                        <button id="btn-save-epargne" onclick="saveEpargneSnapshot()"
+                                class="bg-blue-600 text-white rounded-lg px-5 py-2 text-sm font-medium hover:bg-blue-700 transition">
+                            Enregistrer
+                        </button>
+                    </div>
+
+                    <!-- Carte total / objectif (rendue dynamiquement) -->
+                    <div id="epargne-goal" class="mb-5"></div>
+
+                    <!-- Graphique évolution -->
+                    <div class="mb-6">
+                        <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Évolution des soldes</h3>
+                        <canvas id="savingsEvolutionChart"></canvas>
+                    </div>
+
+                    <!-- Section objectif (localStorage) -->
+                    <div class="flex items-center gap-3 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex-shrink-0">Objectif total</span>
+                        <input type="number" id="savings-goal-input" placeholder="Ex : 50 000" step="100"
+                               class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm w-40 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <button onclick="saveSavingsGoal()"
+                                class="border border-slate-200 hover:bg-slate-100 text-slate-600 rounded-lg px-3 py-1.5 text-sm font-medium transition">
+                            Enregistrer
+                        </button>
+                        <span id="savings-current-goal" class="text-xs text-slate-400"></span>
+                    </div>
+                </div>
+
+                <!-- Onglet Menus & Courses -->
+                <div id="content-menus" class="hidden">
+
+                    <!-- ── Planning ── -->
+                    <div class="flex items-center justify-between mb-5">
+                        <h2 class="text-sm font-semibold text-slate-900">Planning de la semaine</h2>
+                        <div class="flex items-center gap-2">
+                            <button onclick="changeMenuWeek(-1)" class="border border-slate-200 hover:bg-slate-50 rounded-lg w-7 h-7 flex items-center justify-center text-slate-500 transition text-base leading-none">‹</button>
+                            <span id="menus-week-label" class="text-sm font-medium text-slate-700 w-52 text-center"></span>
+                            <button onclick="changeMenuWeek(1)" class="border border-slate-200 hover:bg-slate-50 rounded-lg w-7 h-7 flex items-center justify-center text-slate-500 transition text-base leading-none">›</button>
+                        </div>
+                    </div>
+
+                    <div id="menus-planning-grid" class="mb-8 overflow-x-auto"></div>
+
+                    <!-- ── Liste de courses ── -->
+                    <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Liste de courses</h3>
+                    <div id="menus-shopping-list" class="mb-8"></div>
+
+                    <!-- ── Mes menus ── -->
+                    <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Mes menus</h3>
+
+                    <div class="flex gap-2 mb-4">
+                        <input type="text" id="new-menu-name" placeholder="Nom du menu (ex : Pasta bolognaise)"
+                               class="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <button id="btn-add-menu" onclick="addMenu()"
+                                class="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-blue-700 transition">
+                            Créer
+                        </button>
+                    </div>
+
+                    <div id="menus-list"></div>
                 </div>
 
                 <!-- Onglet Analyse -->
